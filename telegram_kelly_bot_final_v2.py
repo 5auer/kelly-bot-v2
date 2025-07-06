@@ -348,7 +348,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 
     
     # Criar aplicação
-    application = Application.builder().token(TOKEN).build()
+application = Application.builder().token(TOKEN).build()
     
     # Adicionar handlers
     application.add_handler(CommandHandler("start", start))
