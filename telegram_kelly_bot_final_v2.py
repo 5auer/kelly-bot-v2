@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Bot Telegram - Calculadora de Kelly
-Versão Final v2 CORRIGIDA - Limite 0.25%
+Versão Final LIMPA - Limite 0.25%
 """
 
 import logging
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-import asyncio
 
 # Configurar logging
 logging.basicConfig(
@@ -140,7 +140,7 @@ class KellyCalculator:
         return self.format_result(stake_percent)
 
     def format_result(self, final_stake):
-        # Verificar se tem valor mínimo de 0.25% (ALTERADO DE 0.5%)
+        # Verificar se tem valor mínimo de 0.25%
         if final_stake < 0.25:
             return "❌ **APOSTA SEM VALOR**\n\nA odd não apresenta valor explícito para apostar.\n\n⚠️ **Aposte sempre com responsabilidade!**"
 
@@ -342,13 +342,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Função principal"""
-    # SUBSTITUA PELO SEU TOKEN DO BOT
-    import os
-TOKEN = os.getenv("BOT_TOKEN")
-
+    # Ler token da variável de ambiente
+    TOKEN = os.getenv("BOT_TOKEN")
     
     # Criar aplicação
-application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).build()
     
     # Adicionar handlers
     application.add_handler(CommandHandler("start", start))
