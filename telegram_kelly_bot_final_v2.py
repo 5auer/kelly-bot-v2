@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Bot Telegram - Calculadora de Kelly
-Versão Final v2 com Critério de Agressividade - TOKEN CORRIGIDO
+Versão Final v2 com Critério de Agressividade - COMPLETAMENTE LIMPO
 """
 
 import logging
@@ -52,133 +52,156 @@ class KellyCalculator:
         elif self.step == 'juice_question':
             if response in ['sim', 's', 'yes', 'y']:
                 self.is_juice_free = True
-                self.step = 'fair_odds_no_opposite'
+                self.step = 'fair_odds'
                 return "📊 **Qual a odd de referência (sem juice)?** (Ex: 2.38)"
             elif response in ['não', 'nao', 'n', 'no']:
                 self.is_juice_free = False
-                self.step = 'fair_odds_no_opposite'
-                return "📊 **Qual a odd justa encontrada?** (Ex: 2.00)"
+                self.step = 'fair_odds'
+                return "📊 **Qual a odd justa?** (Ex: 2.00)"
             else:
                 return "❌ Por favor, responda 'Sim' ou 'Não'"
 
-        elif self.step in ['fair_odds', 'fair_odds_no_opposite']:
+        elif self.step == 'fair_odds':
             try:
-                fair_odds = float(message.replace(',', '.'))
-                if fair_odds <= 1.0:
-                    return "❌ Por favor, digite um número válido maior que 1.0"
-                self.fair_odds = fair_odds
+                self.fair_odds = float(response.replace(',', '.'))
+                if self.fair_odds <= 1.0:
+                    return "❌ A odd deve ser maior que 1.0"
                 
                 if self.has_opposite_market:
                     self.step = 'opposite_odds'
                     return "📈 **Qual a odd do mercado contrário?** (Ex: 2.20)"
                 else:
-                    self.step = 'value_odds_no_opposite'
+                    self.step = 'value_odds'
                     return "💰 **Qual a odd de valor encontrada?** (Ex: 2.65)"
             except ValueError:
-                return "❌ Por favor, digite um número válido"
+                return "❌ Por favor, digite um número válido (Ex: 1.66)"
 
         elif self.step == 'opposite_odds':
             try:
-                opposite_odds = float(message.replace(',', '.'))
-                if opposite_odds <= 1.0:
-                    return "❌ Por favor, digite um número válido maior que 1.0"
-                self.opposite_odds = opposite_odds
+                self.opposite_odds = float(response.replace(',', '.'))
+                if self.opposite_odds <= 1.0:
+                    return "❌ A odd deve ser maior que 1.0"
+                
                 self.step = 'value_odds'
-                return "💰 **Qual a odd de valor encontrada?** (Ex: 2.00)"
+                return "💰 **Qual a odd de valor encontrada?** (Ex: 2.50)"
             except ValueError:
-                return "❌ Por favor, digite um número válido"
+                return "❌ Por favor, digite um número válido (Ex: 2.20)"
 
-        elif self.step in ['value_odds', 'value_odds_no_opposite']:
+        elif self.step == 'value_odds':
             try:
-                value_odds = float(message.replace(',', '.'))
-                if value_odds <= 1.0:
-                    return "❌ Por favor, digite um número válido maior que 1.0"
-                self.value_odds = value_odds
-                self.step = 'completed'
-                return self.calculate_result()
+                self.value_odds = float(response.replace(',', '.'))
+                if self.value_odds <= 1.0:
+                    return "❌ A odd deve ser maior que 1.0"
+                
+                return self.calculate_kelly()
             except ValueError:
-                return "❌ Por favor, digite um número válido"
+                return "❌ Por favor, digite um número válido (Ex: 2.50)"
 
-        else:
-            return "❌ Erro interno. Use /calcular para começar novamente."
+        return "❌ Erro no processamento. Digite /calcular para recomeçar."
 
-    def apply_aggressiveness_multiplier(self, stake_percent, value_odds):
-        """
-        Aplica critério de agressividade baseado na faixa de odds
-        """
-        if 1.01 <= value_odds <= 2.00:
-            multiplier = 2.0
-            risk_level = "🔥 AGRESSIVO"
-        elif 2.01 <= value_odds <= 3.00:
-            multiplier = 1.0
-            risk_level = "⚖️ PADRÃO"
-        elif 3.01 <= value_odds <= 5.00:
-            multiplier = 0.7
-            risk_level = "🛡️ CONSERVADOR"
-        else:  # 5.01+
-            multiplier = 0.5
-            risk_level = "🔒 MUITO CONSERVADOR"
-        
-        adjusted_stake = stake_percent * multiplier
-        
-        return adjusted_stake, multiplier, risk_level
-
-    def calculate_result(self):
-        if self.has_opposite_market:
-            p_fair = 1 / self.fair_odds
-            p_opposite = 1 / self.opposite_odds
-            total_prob = p_fair + p_opposite
-            real_prob = p_fair / total_prob
-        else:
-            if self.is_juice_free:
-                real_prob = 1 / self.fair_odds
+    def calculate_kelly(self):
+        try:
+            if self.has_opposite_market:
+                # Calcular probabilidade real removendo juice
+                total_implied = (1/self.fair_odds) + (1/self.opposite_odds)
+                real_prob = (1/self.fair_odds) / total_implied
             else:
-                adjusted_fair_odds = self.fair_odds + 0.15
-                real_prob = 1 / adjusted_fair_odds
+                # Sem mercado contrário
+                if self.is_juice_free:
+                    # Odd já está sem juice
+                    real_prob = 1 / self.fair_odds
+                else:
+                    # Adicionar 0.15 para estimar juice
+                    adjusted_odds = self.fair_odds + 0.15
+                    real_prob = 1 / adjusted_odds
 
-        b = self.value_odds - 1
-        expected_value = real_prob * b - (1 - real_prob)
-        kelly_full = expected_value / b
-        kelly_conservative = kelly_full / 8
-        stake_percent = kelly_conservative * 100
-        
-        adjusted_stake, multiplier, risk_level = self.apply_aggressiveness_multiplier(stake_percent, self.value_odds)
-        final_stake = round(adjusted_stake, 2)
+            # Calcular valor esperado
+            expected_value = (self.value_odds * real_prob) - 1
+            
+            # Verificar se tem valor
+            if expected_value <= 0:
+                return "❌ **APOSTA SEM VALOR**\n\nA odd não oferece valor esperado positivo."
 
-        return self.format_result(final_stake, multiplier, risk_level)
+            # Calcular Kelly
+            kelly_full = expected_value / (self.value_odds - 1)
+            kelly_conservative = kelly_full / 8
 
-    def format_result(self, final_stake, multiplier, risk_level):
-        if final_stake < 0.25:
-            return "❌ **APOSTA SEM VALOR**\n\nA odd não apresenta valor explícito para apostar.\n\n⚠️ **Aposte sempre com responsabilidade!**"
+            # CRITÉRIO DE AGRESSIVIDADE POR FAIXA DE ODDS
+            if 1.01 <= self.value_odds <= 2.00:
+                multiplier = 2.0
+                risk_profile = "🔥 AGRESSIVO"
+            elif 2.01 <= self.value_odds <= 3.00:
+                multiplier = 1.0
+                risk_profile = "⚖️ PADRÃO"
+            elif 3.01 <= self.value_odds <= 5.00:
+                multiplier = 0.7
+                risk_profile = "🛡️ CONSERVADOR"
+            else:  # 5.01+
+                multiplier = 0.5
+                risk_profile = "🔒 MUITO CONSERVADOR"
 
-        output = "📊 **DADOS DE ENTRADA:**\n"
-        if self.has_opposite_market:
-            output += f"• Odd Justa: {self.fair_odds}\n"
-            output += f"• Odd Contrária: {self.opposite_odds}\n"
-            output += f"• Odd de Valor: {self.value_odds}\n"
-        else:
-            if self.is_juice_free:
-                output += f"• Odd de Referência (sem juice): {self.fair_odds}\n"
+            # Aplicar multiplicador de agressividade
+            final_stake = kelly_conservative * multiplier
+
+            # Verificar limite mínimo
+            if final_stake < 0.0025:  # 0.25%
+                return "❌ **APOSTA SEM VALOR**\n\nStake calculada abaixo do limite mínimo (0.25%)."
+
+            # Converter para porcentagem
+            stake_percent = final_stake * 100
+
+            # Preparar dados de entrada
+            if self.has_opposite_market:
+                input_data = f"📊 **Odd Justa:** {self.fair_odds}\n📈 **Odd Contrária:** {self.opposite_odds}\n💰 **Odd de Valor:** {self.value_odds}"
             else:
-                output += f"• Odd Justa: {self.fair_odds}\n"
-            output += f"• Odd de Valor: {self.value_odds}\n"
-        
-        output += f"\n🎯 **ANÁLISE DE RISCO:**\n"
-        output += f"• Perfil: {risk_level}\n"
-        output += f"• Multiplicador: {multiplier}x\n"
-        
-        output += "\n💰 **RECOMENDAÇÃO FINAL:**\n"
-        output += f"**Stake recomendada: {final_stake:.2f}%**\n"
-        
-        output += "\n✅ **APOSTA COM VALOR CONFIRMADA!**\n"
-        output += "\n⚠️ **Aposte sempre com responsabilidade!**"
-        
-        return output
+                juice_status = "sem juice" if self.is_juice_free else "com juice"
+                input_data = f"📊 **Odd de Referência ({juice_status}):** {self.fair_odds}\n💰 **Odd de Valor:** {self.value_odds}"
+
+            # Resultado final
+            result = f"""
+{input_data}
+
+🎯 **RECOMENDAÇÃO FINAL:**
+
+**STAKE RECOMENDADA: {stake_percent:.2f}%**
+
+✅ **APOSTA COM VALOR CONFIRMADA!**
+
+⚠️ *Aposte com responsabilidade. Esta é apenas uma sugestão matemática.*
+"""
+            return result.strip()
+
+        except Exception as e:
+            logger.error(f"Erro no cálculo: {e}")
+            return "❌ Erro no cálculo. Tente novamente."
 
 # Dicionário para armazenar calculadoras por usuário
 user_calculators = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_message = """
+🤖 **Calculadora de Kelly v2 - Bot Telegram**
+
+🎯 **Funcionalidades:**
+• Cálculo de Kelly conservador (1/8)
+• Critério de agressividade por faixa de odds
+• Suporte a mercados com e sem contraparte
+• Detecção automática de juice
+
+🔥 **Critérios de Agressividade:**
+• 1.01-2.00: 2x mais agressivo
+• 2.01-3.00: Padrão
+• 3.01-5.00: 0.7x conservador
+• 5.01+: 0.5x muito conservador
+
+📊 **Comandos:**
+/calcular - Iniciar cálculo
+/exemplo - Ver exemplo prático
+/ajuda - Ajuda detalhada
+
+⚠️ *Use com responsabilidade. Aposte apenas o que pode perder.*
+"""
+    
     keyboard = [
         [InlineKeyboardButton("🧮 Calcular Kelly", callback_data='calcular')],
         [InlineKeyboardButton("📊 Ver Exemplo", callback_data='exemplo')],
@@ -186,147 +209,103 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    welcome_text = """🎯 **Calculadora de Kelly - CoreQuantikAI**
-
-Olá! Sou sua calculadora de Kelly profissional com critério de agressividade adaptativo.
-
-Vou te ajudar a calcular a stake ideal para suas apostas usando o critério de Kelly conservador com ajustes baseados no risco da odd.
-
-**Escolha uma opção abaixo:**"""
-
-    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def calcular_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_calculators[user_id] = KellyCalculator()
     
     response = user_calculators[user_id].start_conversation()
-    
-    keyboard = [
-        [InlineKeyboardButton("✅ Sim", callback_data='sim')],
-        [InlineKeyboardButton("❌ Não", callback_data='nao')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(response, reply_markup=reply_markup, parse_mode='Markdown')
+    await update.message.reply_text(response, parse_mode='Markdown')
 
 async def exemplo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    exemplo_text = """📊 **EXEMPLOS COM CRITÉRIO DE AGRESSIVIDADE**
+    exemplo = """
+📊 **Exemplo Prático - Critério de Agressividade:**
 
-🔥 **Exemplo 1: Odd baixa (AGRESSIVO)**
-❓ Tem mercado contrário? **SIM**
-📊 Odd justa: **1.61**
-📈 Odd contrária: **2.31**
-💰 Odd de valor: **1.81**
-🎯 Resultado: **2.02% da banca** (2x mais agressivo)
+**Cenário 1: Odd Baixa (Agressivo)**
+• Odd Justa: 1.61
+• Odd de Valor: 1.81
+• Stake Base: 1.01%
+• **Com Agressividade (2x): 2.02%** 🔥
 
-⚖️ **Exemplo 2: Odd média (PADRÃO)**
-❓ Tem mercado contrário? **SIM**
-📊 Odd justa: **1.66**
-📈 Odd contrária: **2.20**
-💰 Odd de valor: **2.50**
-🎯 Resultado: **3.54% da banca** (multiplicador padrão)
+**Cenário 2: Odd Média (Padrão)**
+• Odd Justa: 2.38 (sem juice)
+• Odd de Valor: 2.65
+• **Stake Recomendada: 0.86%** ⚖️
 
-🛡️ **Exemplo 3: Odd alta (CONSERVADOR)**
-❓ Tem mercado contrário? **NÃO**
-🔍 Odd sem juice? **SIM**
-📊 Odd referência: **3.50**
-💰 Odd de valor: **4.20**
-🎯 Resultado: **1.05% da banca** (0.7x conservador)
+**Cenário 3: Odd Alta (Conservador)**
+• Odd Justa: 4.50
+• Odd de Valor: 5.20
+• Stake Base: 1.20%
+• **Com Conservadorismo (0.7x): 0.84%** 🛡️
 
-**Faixas de Agressividade:**
-🔥 **1.01-2.00:** 2x (alta probabilidade)
-⚖️ **2.01-3.00:** 1x (padrão)
-🛡️ **3.01-5.00:** 0.7x (conservador)
-🔒 **5.01+:** 0.5x (muito conservador)
-
-💡 **Use /calcular para fazer sua análise!**"""
-
-    await update.message.reply_text(exemplo_text, parse_mode='Markdown')
+Digite /calcular para fazer seu próprio cálculo!
+"""
+    await update.message.reply_text(exemplo, parse_mode='Markdown')
 
 async def ajuda_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    ajuda_text = """❓ **CALCULADORA KELLY COM AGRESSIVIDADE**
+    ajuda = """
+❓ **Como Usar a Calculadora:**
 
-**Comandos disponíveis:**
-• `/start` - Iniciar o bot
-• `/calcular` - Nova análise de Kelly
-• `/exemplo` - Ver exemplos práticos
-• `/ajuda` - Esta mensagem
+**1. Mercado Contrário:**
+• Responda se existe mercado oposto (Ex: Over/Under)
 
-**Critério de Agressividade:**
-🔥 **Odds 1.01-2.00:** Multiplicador 2x
-⚖️ **Odds 2.01-3.00:** Multiplicador 1x
-🛡️ **Odds 3.01-5.00:** Multiplicador 0.7x
-🔒 **Odds 5.01+:** Multiplicador 0.5x
+**2. Juice na Odd:**
+• Se não há mercado contrário, informe se a odd já está "limpa"
 
-**Responsabilidade:**
-⚠️ Aposte sempre com responsabilidade
-💰 Nunca aposte mais do que pode perder
-📊 Use apenas como ferramenta de análise"""
+**3. Digite as Odds:**
+• Odd justa/referência
+• Odd contrária (se houver)
+• Odd de valor encontrada
 
-    await update.message.reply_text(ajuda_text, parse_mode='Markdown')
+**4. Receba a Recomendação:**
+• Stake calculada com Kelly conservador
+• Ajustada pelo critério de agressividade
+
+🎯 **Critérios de Agressividade:**
+• **Odds 1.01-2.00:** 2x (alta probabilidade)
+• **Odds 2.01-3.00:** 1x (padrão)
+• **Odds 3.01-5.00:** 0.7x (conservador)
+• **Odds 5.01+:** 0.5x (muito conservador)
+
+⚠️ **Importante:**
+• Limite mínimo: 0.25%
+• Aposte com responsabilidade
+• Esta é apenas uma sugestão matemática
+"""
+    await update.message.reply_text(ajuda, parse_mode='Markdown')
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    user_id = query.from_user.id
-    
     if query.data == 'calcular':
+        user_id = query.from_user.id
         user_calculators[user_id] = KellyCalculator()
         response = user_calculators[user_id].start_conversation()
-        
-        keyboard = [
-            [InlineKeyboardButton("✅ Sim", callback_data='sim')],
-            [InlineKeyboardButton("❌ Não", callback_data='nao')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(response, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(response, parse_mode='Markdown')
     
     elif query.data == 'exemplo':
         await exemplo_command(query, context)
     
     elif query.data == 'ajuda':
         await ajuda_command(query, context)
-    
-    elif query.data in ['sim', 'nao']:
-        if user_id not in user_calculators:
-            await query.edit_message_text("❌ Sessão expirada. Use /calcular para começar novamente.")
-            return
-        
-        response_text = 'sim' if query.data == 'sim' else 'não'
-        response = user_calculators[user_id].process_message(response_text)
-        
-        if user_calculators[user_id].step == 'juice_question':
-            keyboard = [
-                [InlineKeyboardButton("✅ Sim", callback_data='sim')],
-                [InlineKeyboardButton("❌ Não", callback_data='nao')]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text(response, reply_markup=reply_markup, parse_mode='Markdown')
-        else:
-            await query.edit_message_text(response, parse_mode='Markdown')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if user_id not in user_calculators:
-        keyboard = [
-            [InlineKeyboardButton("🧮 Calcular Kelly", callback_data='calcular')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await update.message.reply_text(
-            "👋 Olá! Use /calcular para iniciar uma nova análise.",
-            reply_markup=reply_markup
+            "❌ Nenhum cálculo em andamento.\n\nDigite /calcular para iniciar!",
+            parse_mode='Markdown'
         )
         return
     
     calculator = user_calculators[user_id]
     response = calculator.process_message(update.message.text)
     
-    if calculator.step == 'completed':
+    # Se o cálculo foi finalizado, adicionar botões
+    if "STAKE RECOMENDADA" in response or "APOSTA SEM VALOR" in response:
         keyboard = [
             [InlineKeyboardButton("🔄 Nova Análise", callback_data='calcular')],
             [InlineKeyboardButton("📊 Ver Exemplo", callback_data='exemplo')]
@@ -338,20 +317,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown')
 
 def main():
-    # VALIDAÇÃO FORÇADA DO TOKEN
+    # VALIDAÇÃO ABSOLUTA DO TOKEN
     TOKEN = os.getenv("BOT_TOKEN")
     
     if not TOKEN:
-        print("❌ ERRO: Variável BOT_TOKEN não encontrada!")
-        print("Configure a variável BOT_TOKEN no Railway")
+        print("❌ ERRO CRÍTICO: Variável BOT_TOKEN não encontrada!")
+        print("Configure a variável BOT_TOKEN no Railway com seu token real")
         sys.exit(1)
     
-    if TOKEN == "SEU_TOKEN_AQUI":
-        print("❌ ERRO: Token ainda está como placeholder!")
-        print("Configure o token real na variável BOT_TOKEN")
+    if TOKEN == "SEU_TOKEN_AQUI" or TOKEN == "":
+        print("❌ ERRO CRÍTICO: Token inválido!")
+        print("Configure o token real na variável BOT_TOKEN do Railway")
         sys.exit(1)
     
-    print(f"✅ Token carregado: {TOKEN[:10]}...")
+    if len(TOKEN) < 40:
+        print("❌ ERRO CRÍTICO: Token muito curto!")
+        print("Verifique se o token está completo na variável BOT_TOKEN")
+        sys.exit(1)
+    
+    print(f"✅ Token validado: {TOKEN[:15]}...")
     
     # Criar aplicação
     application = Application.builder().token(TOKEN).build()
@@ -365,10 +349,12 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Iniciar bot
-    print("🤖 Bot Telegram iniciado!")
+    print("🤖 Bot Telegram iniciado com sucesso!")
     print("📊 Calculadora de Kelly v2 com Agressividade ativa!")
     print("🔍 Limite mínimo: 0.25%")
     print("🎯 Critério de agressividade implementado!")
+    print("🔥 Multiplicadores: 2x, 1x, 0.7x, 0.5x")
+    
     application.run_polling()
 
 if __name__ == '__main__':
