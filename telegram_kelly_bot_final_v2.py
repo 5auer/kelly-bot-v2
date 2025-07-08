@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 Bot Telegram - Calculadora de Kelly
-Versão Final LIMPA - Limite 0.25%
+Versão Final v2 com Pergunta sobre Juice
 """
 
 import logging
-import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+import asyncio
 
 # Configurar logging
 logging.basicConfig(
@@ -140,8 +140,8 @@ class KellyCalculator:
         return self.format_result(stake_percent)
 
     def format_result(self, final_stake):
-        # Verificar se tem valor mínimo de 0.25%
-        if final_stake < 0.25:
+        # Verificar se tem valor mínimo de 0.5%
+        if final_stake < 0.5:
             return "❌ **APOSTA SEM VALOR**\n\nA odd não apresenta valor explícito para apostar.\n\n⚠️ **Aposte sempre com responsabilidade!**"
 
         output = "📊 **DADOS DE ENTRADA:**\n"
@@ -256,7 +256,7 @@ async def ajuda_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Usa critério de Kelly conservador (÷8)
 • Remove juice das casas de apostas
 • Só recomenda apostas com valor real
-• Mínimo de 0.25% para recomendar
+• Mínimo de 0.5% para recomendar
 
 **Responsabilidade:**
 ⚠️ Aposte sempre com responsabilidade
@@ -342,8 +342,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Função principal"""
-    # Ler token da variável de ambiente
-    TOKEN = os.getenv("BOT_TOKEN")
+    # SUBSTITUA PELO SEU TOKEN DO BOT
+    TOKEN = "SEU_TOKEN_AQUI"
     
     # Criar aplicação
     application = Application.builder().token(TOKEN).build()
@@ -359,7 +359,7 @@ def main():
     # Iniciar bot
     print("🤖 Bot Telegram iniciado!")
     print("📊 Calculadora de Kelly v2 ativa!")
-    print("🔍 Limite mínimo: 0.25% (ATUALIZADO)")
+    print("🔍 Nova funcionalidade: Pergunta sobre juice implementada!")
     application.run_polling()
 
 if __name__ == '__main__':
